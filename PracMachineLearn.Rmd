@@ -1,0 +1,115 @@
+---
+title: "PracMachineLearn"
+date: "March 21, 2016"
+output: html_document
+---
+
+```{r, echo=TRUE}
+# This report is prepared as part of the Practical Machine Learning Assignment
+# Please be patient as these runs may take a while
+
+library(caret)
+library(rpart)
+library(randomForest)
+
+# Get training and testing data sets
+
+trainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+dataTrain <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""), header=TRUE)
+dataTest <- read.csv(url(testUrl), na.string=c("NA","#DIV/0!",""), header=TRUE)
+
+dim(dataTrain)
+dim(dataTest)
+
+# Clean the Data - Remove NearZeroVariance variables
+
+nzv <- nearZeroVar(dataTrain, saveMetrics=TRUE)
+dataTrain <- dataTrain[,nzv$nzv==FALSE]
+
+# Remove the first column of dataTrain
+
+dataTrain <- dataTrain[c(-1)]
+
+# Clean variables with 70% or more NA values
+
+temp_dataTrain <- dataTrain
+for(i in 1:length(dataTrain)) {
+  if( sum( is.na( dataTrain[, i] ) ) /nrow(dataTrain) >= .7) {
+    for(j in 1:length(temp_dataTrain)) {
+      if( length( grep(names(dataTrain[i]), names(temp_dataTrain)[j]) ) == 1)  {
+        temp_dataTrain <- temp_dataTrain[ , -j]
+      }   
+    } 
+  }
+}
+
+dataTrain <- temp_dataTrain
+rm(temp_dataTrain)
+
+# Remove the columns from testing data set dataTest that are not in dataTrain
+coldataTrain <- colnames(dataTrain[,-58])  # Remove classe column
+dataTest <- dataTest[coldataTrain]
+
+dim(dataTrain)
+dim(dataTest)
+
+# Data Splitting - 60% Training and 40% Testing data set
+
+set.seed(1234)
+inTrain <- createDataPartition(dataTrain$classe, p=0.6, list=FALSE)
+myTraining <- dataTrain[inTrain, ]
+myTesting <- dataTrain[-inTrain, ]
+
+
+# Making sure that class is same in Training and Tesing data sets
+
+for (i in 1:length(dataTest) ) {
+for(j in 1:length(myTraining)) {
+if( length( grep(names(myTraining[i]), names(dataTest)[j]) ) == 1)  {
+class(dataTest[j]) <- class(myTraining[i])
+}      
+}      
+}
+
+# To get the same class between testing and myTraining
+dataTest <- rbind(myTraining[2, -58],dataTest)
+dataTest <- dataTest[-1,]
+
+dim(myTraining)
+dim(myTesting)
+dim(dataTest)
+
+# Prediction with Random Forest
+
+set.seed(1234)
+modFitRF <- randomForest(classe ~ ., data=myTraining)
+predictionRF <- predict(modFitRF, myTesting, type = "class")
+cmrf <- confusionMatrix(predictionRF, myTesting$classe)
+cmrf
+
+plot(modFitRF)
+
+# Prediction with Genererlized Boosted Model
+
+set.seed(1234)
+fitControl <- trainControl(method = "cv", number = 5)
+gbmFit <- train(classe~., data=myTraining, method="gbm", trControl=fitControl, verbose=FALSE)
+
+gbmFinMod <- gbmFit$finalModel
+
+predictionGBM <- predict(gbmFit, newdata=myTesting)
+gbmAccuracyTest <- confusionMatrix(predictionGBM, myTesting$classe)
+gbmAccuracyTest
+
+plot(gbmFit, ylim=c(0.8, 1))
+
+# Predicting Results on the Test Data Set
+# Prediction is done using Random Forest as it has a slightly higher accuracy than gbm
+
+preditionRF_Test <- predict(modFitRF, dataTest)
+print(as.data.frame(preditionRF_Test))
+
+```
+--- 
